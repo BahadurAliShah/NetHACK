@@ -1,7 +1,16 @@
-from flask_restful import Resource, request
 from scapy.all import *
+from app import socket_
+import threading
+import json
+from flask_socketio import emit
 
-class Sniffer(Resource):
+temp_packets = []
+Packets = []
+Continue = False
+LOCK = threading.Lock()
+DELAY = 0.7
+
+class Sniffer:
     def __get_packet_layers(self, packet):
         counter = 0
         while True:
@@ -95,23 +104,67 @@ class Sniffer(Resource):
             layer_json["fields"] = {}
 
             for field in layer.fields_desc:
-                layer_json["fields"][field.name] = getattr(layer, field.name)
+                layer_json["fields"][field.name] = str(getattr(layer, field.name))
+            layer_json["fields"] = (layer_json["fields"])
+            packet_json["layers"].append((layer_json))
+            packet_json["Frame_info"] = (self.__get_frame_info_json(packet))
 
-            packet_json["layers"].append(layer_json)
-            packet_json["Frame_info"] = self.__get_frame_info_json(packet)
-
-        return packet_json
+        return (packet_json)
 
     def start(self, interface):
         def print_layers(packet):
-            print("Device Type: %s" % self.__get_device_type(packet))
-            print(self.__create_packet_json(packet))
+            global temp_packets, Packets, Continue
+            # print(self.__create_packet_json(packet))
 
-        # sniff the packets
-        sniff(prn=print_layers, iface=interface)
+            packet_json = self.__create_packet_json(packet)
+            LOCK.acquire()
+            temp_packets.append(packet_json)
+            Packets.append(packet_json)
+            print(len(temp_packets))
+            LOCK.release()
 
-    def post(self):
-        interface = request.json["interface"]
-        self.start(interface)
+        def stopFilter(packet):
+            global Continue
+            return not Continue
 
-        return {"message": "Sniffer started"}, 200
+        sniff(prn=print_layers, iface=interface, stop_filter=stopFilter)
+
+
+def dataGenerator(interface):
+    global Continue
+    print("Initialising")
+    threading.Thread(target=Sniffer().start, args=(interface,)).start()
+    try:
+        while Continue:
+            global temp_packets, Packets, LOCK
+            while len(temp_packets) == 0 and Continue:
+                socket_.sleep(DELAY)
+            LOCK.acquire()
+            socket_.emit('packet', {'data': json.dumps(temp_packets)})
+            temp_packets = []
+            LOCK.release()
+    except KeyboardInterrupt:
+        print("Keyboard  Interrupt")
+
+
+
+
+@socket_.on('start_sniffing')
+def start_sniffing(data):
+    global thread, Continue
+    if not Continue:
+        Continue = True
+        print("Starting Sniffing", data)
+        if data['interface']:
+            emit('sniffing', {'data': 'Connected! ayy', 'status': 'success'})
+            dataGenerator(data['interface'])
+        else:
+            emit('sniffing', {'data': 'Interface not selected!', 'status': 'error'})
+    else:
+        emit('sniffing', {'data': 'Sniffing already started!', 'status': 'success'})
+
+@socket_.on('stop_sniffing')
+def stop_sniffing():
+    global Continue
+    Continue = False
+    print("Stopping Thread")

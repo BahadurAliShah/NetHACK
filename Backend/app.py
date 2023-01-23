@@ -1,17 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_restful import Resource, Api
+from flask_socketio import SocketIO
 
-from Packages import Sniffer
-from Packages import Interfaces
+async_mode = None
 
 app = Flask(__name__)
+socket_ = SocketIO(app, async_mode=async_mode, cors_allowed_origins="*")
 CORS(app)
 
-api = Api(app)
-api.add_resource(Sniffer, '/sniffer')
-api.add_resource(Interfaces, '/interfaces')
-
-if __name__ == '__main__':
-    app.run(debug=True)
 
