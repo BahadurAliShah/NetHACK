@@ -8,7 +8,7 @@ temp_packets = []
 Packets = []
 Continue = False
 LOCK = threading.Lock()
-DELAY = 0.7
+DELAY = 0.5
 
 class Sniffer:
     def __get_packet_layers(self, packet):
@@ -96,18 +96,23 @@ class Sniffer:
 
     def __create_packet_json(self, packet):
         packet_json = {}
-        packet_json["layers"] = []
+        packet_json["layers"] = {}
 
         for layer in self.__get_packet_layers(packet):
             layer_json = {}
-            layer_json["name"] = layer.name
-            layer_json["fields"] = {}
+            # layer_json["name"] = layer.name
+            layer_json = {}
 
             for field in layer.fields_desc:
-                layer_json["fields"][field.name] = str(getattr(layer, field.name))
-            layer_json["fields"] = (layer_json["fields"])
-            packet_json["layers"].append((layer_json))
-            packet_json["Frame_info"] = (self.__get_frame_info_json(packet))
+                    layer_json[field.name] = str(getattr(layer, field.name))
+            # try:
+            #     if layer_json["fields"]["flags"]:
+            #         layer_json["fields"]["flags"] = str(layer_json["fields"]["flags"])
+            # except:
+            #     pass
+            # print(layer_json["fields"])
+            packet_json["layers"][layer.name] = layer_json
+        packet_json["Frame_info"] = (self.__get_frame_info_json(packet))
 
         return (packet_json)
 
@@ -120,7 +125,7 @@ class Sniffer:
             LOCK.acquire()
             temp_packets.append(packet_json)
             Packets.append(packet_json)
-            print(len(temp_packets))
+            # print(len(temp_packets))
             LOCK.release()
 
         def stopFilter(packet):
@@ -141,6 +146,8 @@ def dataGenerator(interface):
                 socket_.sleep(DELAY)
             LOCK.acquire()
             socket_.emit('packet', {'data': json.dumps(temp_packets)})
+            print("Sent " + str(len(temp_packets)) + " packets")
+            print("Total packets: " + str(len(Packets)) + "\n")
             temp_packets = []
             LOCK.release()
     except KeyboardInterrupt:
