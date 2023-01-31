@@ -18,6 +18,7 @@ LOCK = threading.Lock()
 DELAY = 1
 FILTERS = []
 
+
 def extractDeviceFromPacket(packet_json):
     try:
         device = {
@@ -39,6 +40,7 @@ def extractDeviceFromPacket(packet_json):
     except:
         print("Error in Extracting Device From Packet")
 
+
 def getTheSpeedOfEachDevice(packet_json):
     try:
         deviceAlreadyExists = False
@@ -50,7 +52,6 @@ def getTheSpeedOfEachDevice(packet_json):
             elif SPEED[i]["Mac Address"] == packet_json["Ethernet"]["dst"]:
                 InstantaneousSPEED[i]["RBytes"] += packet_json["Frame_info"]["Frame_size"]
                 SPEED[i]["RBytes"] += packet_json["Frame_info"]["Frame_size"]
-
 
         if not deviceAlreadyExists:
             temp = len(SPEED)
@@ -67,6 +68,95 @@ def getTheSpeedOfEachDevice(packet_json):
     except:
         print("Error in speed", packet_json)
 
+
+def applyFilters(packet_json):
+    global FILTERS
+    Application_Layer_Filter = True
+    Transport_Layer_Filter = True
+    General_Filter = True
+    if len(FILTERS) > 0:
+        applicationFilters = filter(lambda x: x["checked"] == True, FILTERS[0]["options"])
+        applicationFilters = list(map(lambda x: x["value"].lower(), applicationFilters))
+
+        transportFilters = filter(lambda x: x["checked"] == True, FILTERS[1]["options"])
+        transportFilters = list(map(lambda x: x["value"].lower(), transportFilters))
+
+        generalFilters = list(filter(lambda x: x["checked"] == True, FILTERS[2]["options"]))
+
+        if packet_json["Frame_info"]["Application_protocol"].lower() not in applicationFilters and len(
+                applicationFilters) > 0:
+            Application_Layer_Filter = False
+        if not Application_Layer_Filter:
+            for i in packet_json["Frame_info"]["Frame_protocols"]:
+                if i.lower() in applicationFilters:
+                    Application_Layer_Filter = True
+                    break
+        if 'other' in applicationFilters:
+            Application_Layer_Filter = True
+
+        if len(transportFilters) > 0:
+            Transport_Layer_Filter = False
+        for y in packet_json["Frame_info"]["Frame_protocols"]:
+            if y.lower() in transportFilters:
+                Transport_Layer_Filter = True
+
+        try:
+            if len(generalFilters) > 0:
+                General_Filter = False
+            for z in generalFilters:
+                if "sourceip" == z["value"].lower():
+                    try:
+                        if packet_json["IP"]["src"] == z["inputValue"]:
+                            General_Filter = True
+                            break
+                    except:
+                        pass
+                elif "destinationip" == z["value"].lower():
+                    try:
+                        if packet_json["IP"]["dst"] == z["inputValue"]:
+                            General_Filter = True
+                            break
+                    except:
+                        pass
+                elif "sourceport" == z["value"].lower():
+                    try:
+                        if packet_json["TCP"]["sport"] == z["inputValue"]:
+                            General_Filter = True
+                            break
+                    except:
+                        pass
+                    try:
+                        if packet_json["UDP"]["sport"] == z["inputValue"]:
+                            General_Filter = True
+                            break
+                    except:
+                        pass
+                elif "destinationport" == z["value"].lower():
+                    try:
+                        if packet_json["TCP"]["dport"] == z["inputValue"]:
+                            General_Filter = True
+                            break
+                    except:
+                        pass
+                    try:
+                        if packet_json["UDP"]["dport"] == z["inputValue"]:
+                            General_Filter = True
+                            break
+                    except:
+                        pass
+                elif "sourceaddress" == z["value"].lower():
+                    if packet_json["Ethernet"]["src"] == z["inputValue"]:
+                        General_Filter = True
+                        break
+                elif "destinationaddress" == z["value"].lower():
+                    if packet_json["Ethernet"]["dst"] == z["inputValue"]:
+                        General_Filter = True
+                        break
+        except:
+            pass
+    return Application_Layer_Filter and Transport_Layer_Filter and General_Filter
+
+
 class Sniffer:
     def __get_packet_layers(self, packet):
         counter = 0
@@ -77,7 +167,6 @@ class Sniffer:
 
             yield layer
             counter += 1
-
 
     def __get_device_type(self, packet):
         for layer in self.__get_packet_layers(packet):
@@ -131,7 +220,6 @@ class Sniffer:
         except:
             packet_json["Capture_length"] = ""
 
-
         try:
             payload = str(packet.payload)
             if payload.startswith("GET"):
@@ -153,7 +241,7 @@ class Sniffer:
 
         try:
             packet_json["Frame_protocols"] = ["Frame_info", ]
-            temp_layers = [layer.name for layer in self.__get_packet_layers(packet) ]
+            temp_layers = [layer.name for layer in self.__get_packet_layers(packet)]
             new_layers = []
             for layer in temp_layers:
                 counter = 1
@@ -185,9 +273,7 @@ class Sniffer:
         except:
             packet_json["Frame_size"] = 0
 
-
         return packet_json
-
 
     def __create_packet_json(self, packet):
         packet_json = {}
@@ -199,7 +285,7 @@ class Sniffer:
             layer_json = {}
 
             for field in layer.fields_desc:
-                    layer_json[field.name] = str(getattr(layer, field.name))
+                layer_json[field.name] = str(getattr(layer, field.name))
             # try:
             #     if layer_json["fields"]["flags"]:
             #         layer_json["fields"]["flags"] = str(layer_json["fields"]["flags"])
@@ -223,6 +309,7 @@ class Sniffer:
         SPEED = []
         try:
             StartTime = time.time()
+
             def print_layers(packet):
                 global temp_packets, Packets, Continue, Devices, LOCK
                 # print(self.__create_packet_json(packet))
@@ -233,92 +320,9 @@ class Sniffer:
                     extractDeviceFromPacket(packet_json)
                     getTheSpeedOfEachDevice(packet_json)
 
-                Application_Layer_Filter = True
-                Transport_Layer_Filter = True
-                General_Filter = True
-                if len(FILTERS) > 0:
-                    applicationFilters = filter(lambda x: x["checked"] == True, FILTERS[0]["options"])
-                    applicationFilters = list(map(lambda x: x["value"].lower(), applicationFilters))
-
-                    transportFilters = filter(lambda x: x["checked"] == True, FILTERS[1]["options"])
-                    transportFilters = list(map(lambda x: x["value"].lower(), transportFilters))
-
-                    generalFilters = list(filter(lambda x: x["checked"] == True, FILTERS[2]["options"]))
-
-                    if packet_json["Frame_info"]["Application_protocol"].lower() not in applicationFilters and len(applicationFilters) > 0:
-                        Application_Layer_Filter = False
-                    if not Application_Layer_Filter:
-                        for i in packet_json["Frame_info"]["Frame_protocols"]:
-                            if i.lower() in applicationFilters:
-                                Application_Layer_Filter = True
-                                break
-                    if 'other' in applicationFilters:
-                        Application_Layer_Filter = True
-
-                    if len(transportFilters) > 0:
-                        Transport_Layer_Filter = False
-                    for y in packet_json["Frame_info"]["Frame_protocols"]:
-                        if y.lower() in transportFilters:
-                            Transport_Layer_Filter = True
-
-                    try:
-                        if len(generalFilters) > 0:
-                            General_Filter = False
-                        for z in generalFilters:
-                            if "sourceip" == z["value"].lower():
-                                try:
-                                    if packet_json["IP"]["src"] == z["inputValue"]:
-                                        General_Filter = True
-                                        break
-                                except:
-                                    pass
-                            elif "destinationip" == z["value"].lower():
-                                try:
-                                    if packet_json["IP"]["dst"] == z["inputValue"]:
-                                        General_Filter = True
-                                        break
-                                except:
-                                    pass
-                            elif "sourceport" == z["value"].lower():
-                                try:
-                                    if packet_json["TCP"]["sport"] == z["inputValue"]:
-                                        General_Filter = True
-                                        break
-                                except:
-                                    pass
-                                try:
-                                    if packet_json["UDP"]["sport"] == z["inputValue"]:
-                                        General_Filter = True
-                                        break
-                                except:
-                                    pass
-                            elif "destinationport" == z["value"].lower():
-                                try:
-                                    if packet_json["TCP"]["dport"] == z["inputValue"]:
-                                        General_Filter = True
-                                        break
-                                except:
-                                    pass
-                                try:
-                                    if packet_json["UDP"]["dport"] == z["inputValue"]:
-                                        General_Filter = True
-                                        break
-                                except:
-                                    pass
-                            elif "sourceaddress" == z["value"].lower():
-                                if packet_json["Ethernet"]["src"] == z["inputValue"]:
-                                    General_Filter = True
-                                    break
-                            elif "destinationaddress" == z["value"].lower():
-                                if packet_json["Ethernet"]["dst"] == z["inputValue"]:
-                                    General_Filter = True
-                                    break
-                    except:
-                        pass
-
-                if Application_Layer_Filter and Transport_Layer_Filter and General_Filter:
+                if applyFilters(packet_json):
                     temp_packets.append(packet_json)
-                    Packets.append(packet_json)
+                Packets.append(packet_json)
 
                 # print(len(temp_packets))
                 LOCK.release()
@@ -335,7 +339,6 @@ class Sniffer:
     #     global Packets
 
 
-
 def dataGenerator(interface):
     global Continue, temp_packets, Packets, LOCK
     print("Initialising")
@@ -347,12 +350,12 @@ def dataGenerator(interface):
                 socket_.sleep(DELAY)
             LOCK.acquire()
             for i in range(len(SPEED)):
-                InstantaneousSPEED[i]["instantanouesRSpeed"] = InstantaneousSPEED[i]["RBytes"]/float(DELAY)
-                InstantaneousSPEED[i]["instantanouesSSpeed"] = InstantaneousSPEED[i]["SBytes"]/float(DELAY)
+                InstantaneousSPEED[i]["instantanouesRSpeed"] = InstantaneousSPEED[i]["RBytes"] / float(DELAY)
+                InstantaneousSPEED[i]["instantanouesSSpeed"] = InstantaneousSPEED[i]["SBytes"] / float(DELAY)
                 print(InstantaneousSPEED[i]["instantanouesRSpeed"], InstantaneousSPEED[i]["instantanouesSSpeed"])
                 if time.time() - StartTime:
-                    SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes']/(time.time() - StartTime)
-                    SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes']/(time.time() - StartTime)
+                    SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes'] / (time.time() - StartTime)
+                    SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes'] / (time.time() - StartTime)
                 else:
                     SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes']
                     SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes']
@@ -373,8 +376,6 @@ def dataGenerator(interface):
             print("Keyboard  Interrupt")
 
 
-
-
 @socket_.on('start_sniffing')
 def start_sniffing(data):
     global thread, Continue
@@ -389,6 +390,7 @@ def start_sniffing(data):
     else:
         emit('sniffing', {'data': 'Sniffing already started!', 'status': 'success'})
 
+
 @socket_.on('stop_sniffing')
 def stop_sniffing():
     print(time.time() - StartTime)
@@ -397,11 +399,13 @@ def stop_sniffing():
     Continue = False
     print("Stopping Thread")
 
+
 @socket_.on('setFilters')
 def set_filters(data):
     global FILTERS
     FILTERS = data
     print("Filters: ", data)
+
 
 @socket_.on('clearFilters')
 def clear_filters():
