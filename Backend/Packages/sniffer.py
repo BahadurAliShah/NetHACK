@@ -398,6 +398,7 @@ def stop_sniffing():
     global Continue
     Continue = False
     print("Stopping Thread")
+    emit('stoped_sniffing', {'data': 'Stopped Sniffing', 'status': 'success'})
 
 
 @socket_.on('setFilters')
@@ -412,7 +413,6 @@ def clear_filters():
     global FILTERS
     FILTERS = []
     print("Filters: ", FILTERS)
-
 
 @socket_.on('get_devices')
 def get_devices():
