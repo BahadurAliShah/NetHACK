@@ -17,6 +17,41 @@ GetDevices = False
 LOCK = threading.Lock()
 DELAY = 1
 FILTERS = []
+AnalyzedData = []
+
+
+def extractPacketProtocols(packet_json):
+    try:
+        Protocol_Already_Exists = False
+        for i in range(2, 5):
+            Protocol_Already_Exists = False
+            if len(packet_json["Frame_info"]["Frame_protocols"]) > i and packet_json["Frame_info"]["Frame_protocols"][i] != "Raw":
+                for j in AnalyzedData:
+                    if j["name"] == packet_json["Frame_info"]["Frame_protocols"][i]:
+                        j["count"] += 1
+                        Protocol_Already_Exists = True
+                        break
+                if not Protocol_Already_Exists:
+                    AnalyzedData.append({
+                        "name": packet_json["Frame_info"]["Frame_protocols"][i],
+                        "count": 1
+                    })
+
+        if packet_json["Frame_info"]["Application_protocol"] != "Unknown":
+            for j in AnalyzedData:
+                if j["name"] == packet_json["Frame_info"]["Application_protocol"]:
+                    j["count"] += 1
+                    Protocol_Already_Exists = True
+                    break
+
+            if not Protocol_Already_Exists:
+                AnalyzedData.append({
+                    "name": packet_json["Frame_info"]["Application_protocol"],
+                    "count": 1
+                })
+    except:
+        # print("Error in Extracting Packet Protocols")
+        pass
 
 
 def extractDeviceFromPacket(packet_json):
@@ -50,21 +85,25 @@ def getTheSpeedOfEachDevice(packet_json):
                 deviceAlreadyExists = True
                 InstantaneousSPEED[i]["SBytes"] += packet_json["Frame_info"]["Frame_size"]
                 SPEED[i]["SBytes"] += packet_json["Frame_info"]["Frame_size"]
+                SPEED[i]["sentPackets"] += 1
             elif SPEED[i]["Mac Address"] == packet_json["Ethernet"]["dst"]:
                 InstantaneousSPEED[i]["RBytes"] += packet_json["Frame_info"]["Frame_size"]
                 SPEED[i]["RBytes"] += packet_json["Frame_info"]["Frame_size"]
+                SPEED[i]["receivedPackets"] += 1
 
         if not deviceAlreadyExists:
             temp = len(SPEED)
             InstantaneousSPEED.append({
                 "Mac Address": packet_json["Ethernet"]["src"],
                 "SBytes": packet_json["Frame_info"]["Frame_size"],
-                "RBytes": 0
+                "RBytes": 0,
             })
             SPEED.append({
                 "Mac Address": packet_json["Ethernet"]["src"],
                 "SBytes": packet_json["Frame_info"]["Frame_size"],
-                "RBytes": 0
+                "RBytes": 0,
+                "sentPackets": 1,
+                "receivedPackets": 0,
             })
     except:
         # print("Error in speed", packet_json)
@@ -332,7 +371,7 @@ class Sniffer:
                 if packet_json["Frame_info"]["deviceType"] != "Broadcast":
                     extractDeviceFromPacket(packet_json)
                     getTheSpeedOfEachDevice(packet_json)
-
+                extractPacketProtocols(packet_json)
                 if applyFilters(packet_json):
                     temp_packets.append(packet_json)
                 Packets.append(packet_json)
@@ -376,6 +415,8 @@ def dataGenerator(interface):
                 'InstantaneousSPEED': InstantaneousSPEED,
                 'AvgSpeed': SPEED,
                 'Devices': Devices,
+                'AnalyzedData': AnalyzedData,
+                'TotalPackets': len(Packets)
             })
             print("Sent " + str(len(temp_packets)) + " packets")
             print("Total packets: " + str(len(Packets)) + "\n")
