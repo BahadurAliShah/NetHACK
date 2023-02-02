@@ -38,7 +38,8 @@ def extractDeviceFromPacket(packet_json):
         if not deviceAlreadyExists:
             Devices.append(device)
     except:
-        print("Error in Extracting Device From Packet")
+        # print("Error in Extracting Device From Packet")
+        pass
 
 
 def getTheSpeedOfEachDevice(packet_json):
@@ -66,7 +67,8 @@ def getTheSpeedOfEachDevice(packet_json):
                 "RBytes": 0
             })
     except:
-        print("Error in speed", packet_json)
+        # print("Error in speed", packet_json)
+        pass
 
 
 def applyFilters(packet_json):
@@ -222,7 +224,18 @@ class Sniffer:
 
         try:
             payload = str(packet.payload)
-            if payload.startswith("GET"):
+            # print("Payload: ",payload)
+            if 'http' in payload:
+                packet_json["Application_protocol"] = "HTTP"
+            elif 'ftp' in payload:
+                packet_json["Application_protocol"] = "FTP"
+            elif 'ssh' in payload:
+                packet_json["Application_protocol"] = "SSH"
+            elif 'telnet' in payload:
+                packet_json["Application_protocol"] = "TELNET"
+            elif 'smtp' in payload:
+                packet_json["Application_protocol"] = "SMTP"
+            elif payload.startswith("GET"):
                 packet_json["Application_protocol"] = "HTTP"
             elif payload.startswith("POST"):
                 packet_json["Application_protocol"] = "HTTP"
@@ -236,6 +249,7 @@ class Sniffer:
                 packet_json["Application_protocol"] = "SMTP"
             else:
                 packet_json["Application_protocol"] = "Unknown"
+
         except:
             packet_json["Application_protocol"] = ""
 
@@ -306,7 +320,6 @@ class Sniffer:
 
     def start(self, interface):
         global StartTime, SPEED
-        SPEED = []
         try:
             StartTime = time.time()
 
@@ -352,7 +365,6 @@ def dataGenerator(interface):
             for i in range(len(SPEED)):
                 InstantaneousSPEED[i]["instantanouesRSpeed"] = InstantaneousSPEED[i]["RBytes"] / float(DELAY)
                 InstantaneousSPEED[i]["instantanouesSSpeed"] = InstantaneousSPEED[i]["SBytes"] / float(DELAY)
-                print(InstantaneousSPEED[i]["instantanouesRSpeed"], InstantaneousSPEED[i]["instantanouesSSpeed"])
                 if time.time() - StartTime:
                     SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes'] / (time.time() - StartTime)
                     SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes'] / (time.time() - StartTime)
@@ -373,7 +385,8 @@ def dataGenerator(interface):
                 InstantaneousSPEED[i]['SBytes'] = 0
             LOCK.release()
         except KeyboardInterrupt:
-            print("Keyboard  Interrupt")
+            # print("Keyboard  Interrupt")
+            pass
 
 
 @socket_.on('start_sniffing')
@@ -394,7 +407,6 @@ def start_sniffing(data):
 @socket_.on('stop_sniffing')
 def stop_sniffing():
     print(time.time() - StartTime)
-    SPEED.clear()
     global Continue
     Continue = False
     print("Stopping Thread")
@@ -413,6 +425,7 @@ def clear_filters():
     global FILTERS
     FILTERS = []
     print("Filters: ", FILTERS)
+
 
 @socket_.on('get_devices')
 def get_devices():
