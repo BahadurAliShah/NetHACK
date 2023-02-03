@@ -1,7 +1,8 @@
+import os
 import time
-
+from flask import request, send_file
 from scapy.all import *
-from app import socket_
+from app import socket_, app
 import threading
 import json
 from flask_socketio import emit
@@ -374,7 +375,7 @@ class Sniffer:
                 extractPacketProtocols(packet_json)
                 if applyFilters(packet_json):
                     temp_packets.append(packet_json)
-                Packets.append(packet_json)
+                Packets.append(packet)
 
                 # print(len(temp_packets))
                 LOCK.release()
@@ -476,3 +477,56 @@ def get_devices():
     else:
         GetDevices = True
         emit('devices', {'data': 'Done', 'status': 'success'})
+
+@socket_.on('saveFile')
+def saveFile():
+    try:
+        global Packets
+        print("Saving File")
+        wrpcap('test.pcap', Packets)
+        emit('savedFile', {'data': 'Done', 'status': 'success'})
+    except:
+        emit('savedFile', {'data': 'Error', 'status': 'error'})
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    global Packets
+    try:
+        file = request.files['file']
+        if file:
+            filename = 'temp.pcap'
+            # save in current folder
+            file.save(os.path.join(os.getcwd(), filename))
+            # read pcap file
+            Packets = rdpcap(filename)
+            # remove file
+            os.remove(filename)
+            return {'data': 'Done', 'status': 'success'}
+        return {'data': 'Error', 'status': 'error'}
+    except Exception as e:
+        print(e)
+        return {'data': str(e), 'status': 'error'}
+
+
+@app.route('/download', methods=['POST'])
+def download_file():
+    global Packets
+    try:
+        fileName = json.loads(request.get_data())['file']
+        if fileName:
+            # create a folder of the created files
+            if not os.path.exists('files'):
+                os.mkdir('files')
+            # remove all the files in the folder
+            for file in os.listdir('files'):
+                os.remove(os.path.join('files', file))
+            # save the file
+
+            fileName = 'files/' + fileName + '.pcap'
+            wrpcap(fileName, Packets)
+            return send_file(fileName, as_attachment=True)
+        return {'data': 'Error', 'status': 'error'}
+    except Exception as e:
+        print(e)
+        return {'data': str(e), 'status': 'error'}
+
