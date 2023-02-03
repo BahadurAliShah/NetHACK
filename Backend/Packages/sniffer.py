@@ -478,6 +478,7 @@ def get_devices():
         GetDevices = True
         emit('devices', {'data': 'Done', 'status': 'success'})
 
+
 @socket_.on('saveFile')
 def saveFile():
     try:
@@ -488,9 +489,11 @@ def saveFile():
     except:
         emit('savedFile', {'data': 'Error', 'status': 'error'})
 
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     global Packets
+    Packets = []
     try:
         file = request.files['file']
         if file:
@@ -540,15 +543,15 @@ def get_packets():
         size = data['size']
         LOCK.acquire()
         temp_packets = []
-        upperLimit = (page+1) * size
-        if len(Packets) < (page) * size+upperLimit:
-            upperLimit = len(Packets)-page*size
-        print("Page: ", page, "Size: ", size, "Upper Limit: ", upperLimit)
-        for i in range(page*size, page*size+upperLimit):
-            temp_packets.append(Sniffer().create_packet_json(Packets[i]))
+        upperLimit = (page + 1) * size
+        if len(Packets) < (page) * size + upperLimit:
+            upperLimit = len(Packets) - page * size
+        while len(temp_packets) < upperLimit:
+            packet_json = Sniffer().create_packet_json(Packets[page * size + len(temp_packets)])
+            if applyFilters(packet_json):
+                temp_packets.append(packet_json)
         LOCK.release()
         return {'data': temp_packets, 'status': 'success'}
     except Exception as e:
         print(e)
         return {'data': str(e), 'status': 'error'}
-
