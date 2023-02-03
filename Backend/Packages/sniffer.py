@@ -329,7 +329,7 @@ class Sniffer:
 
         return packet_json
 
-    def __create_packet_json(self, packet):
+    def create_packet_json(self, packet):
         packet_json = {}
         packet_json["Frame_info"] = (self.__get_frame_info_json(packet))
 
@@ -365,9 +365,9 @@ class Sniffer:
 
             def print_layers(packet):
                 global temp_packets, Packets, Continue, Devices, LOCK
-                # print(self.__create_packet_json(packet))
+                # print(self.create_packet_json(packet))
 
-                packet_json = self.__create_packet_json(packet)
+                packet_json = self.create_packet_json(packet)
                 LOCK.acquire()
                 if packet_json["Frame_info"]["deviceType"] != "Broadcast":
                     extractDeviceFromPacket(packet_json)
@@ -526,6 +526,28 @@ def download_file():
             wrpcap(fileName, Packets)
             return send_file(fileName, as_attachment=True)
         return {'data': 'Error', 'status': 'error'}
+    except Exception as e:
+        print(e)
+        return {'data': str(e), 'status': 'error'}
+
+
+@app.route('/getpackets', methods=['POST'])
+def get_packets():
+    global Packets, LOCK
+    try:
+        data = json.loads(request.get_data())
+        page = data['page']
+        size = data['size']
+        LOCK.acquire()
+        temp_packets = []
+        upperLimit = (page+1) * size
+        if len(Packets) < (page) * size+upperLimit:
+            upperLimit = len(Packets)-page*size
+        print("Page: ", page, "Size: ", size, "Upper Limit: ", upperLimit)
+        for i in range(page*size, page*size+upperLimit):
+            temp_packets.append(Sniffer().create_packet_json(Packets[i]))
+        LOCK.release()
+        return {'data': temp_packets, 'status': 'success'}
     except Exception as e:
         print(e)
         return {'data': str(e), 'status': 'error'}
