@@ -458,15 +458,19 @@ def stop_sniffing():
 
 @socket_.on('setFilters')
 def set_filters(data):
-    global FILTERS
+    global FILTERS, LOCK
+    LOCK.acquire()
     FILTERS = data
+    LOCK.release()
     print("Filters: ", data)
 
 
 @socket_.on('clearFilters')
 def clear_filters():
-    global FILTERS
+    global FILTERS, LOCK
+    LOCK.acquire()
     FILTERS = []
+    LOCK.release()
     print("Filters: ", FILTERS)
 
 
@@ -579,10 +583,12 @@ def get_packets():
         LOCK.acquire()
         temp_packets = []
         upperLimit = (page + 1) * size
+        iterator = 0
         if len(Packets) < (page) * size + upperLimit:
             upperLimit = len(Packets) - page * size
-        while len(temp_packets) < upperLimit:
-            packet_json = Sniffer().create_packet_json(Packets[page * size + len(temp_packets)])
+        while len(temp_packets) < upperLimit and page * size+iterator < len(Packets):
+            packet_json = Sniffer().create_packet_json(Packets[page * size + iterator])
+            iterator += 1
             if applyFilters(packet_json):
                 temp_packets.append(packet_json)
         LOCK.release()
