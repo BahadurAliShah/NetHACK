@@ -297,20 +297,7 @@ class Sniffer:
         try:
             packet_json["Frame_protocols"] = ["Frame_info", ]
             temp_layers = [layer.name for layer in self.__get_packet_layers(packet)]
-            new_layers = []
-            for layer in temp_layers:
-                counter = 1
-                if temp_layers.count(layer) > 1:
-                    for i in new_layers:
-                        try:
-                            if int(i.split("_")[-1]):
-                                counter = int(i.split("_")[-1]) + 1
-                        except:
-                            pass
-                    new_layers.append(layer + "_" + str(counter))
-                else:
-                    new_layers.append(layer)
-            packet_json["Frame_protocols"].extend(new_layers)
+            packet_json["Frame_protocols"].extend(temp_layers)
         except:
             packet_json["Frame_protocols"] = []
         try:
@@ -462,6 +449,7 @@ def set_filters(data):
     LOCK.acquire()
     FILTERS = data
     LOCK.release()
+    emit('Filters', {'data': 'Filters set', 'status': 'success'})
     print("Filters: ", data)
 
 
@@ -471,6 +459,7 @@ def clear_filters():
     LOCK.acquire()
     FILTERS = []
     LOCK.release()
+    emit('Filters', {'data': 'Filters cleared', 'status': 'success'})
     print("Filters: ", FILTERS)
 
 
