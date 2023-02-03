@@ -1,11 +1,10 @@
-import os
-import time
-from flask import request, send_file
-from scapy.all import *
-from app import socket_, app
-import threading
 import json
+import threading
+
+from app import socket_, app
+from flask import request, send_file
 from flask_socketio import emit
+from scapy.all import *
 
 temp_packets = []
 Packets = []
@@ -19,6 +18,7 @@ LOCK = threading.Lock()
 DELAY = 1
 FILTERS = []
 AnalyzedData = []
+PaginationPackets = None
 
 
 def extractPacketProtocols(packet_json):
@@ -26,7 +26,8 @@ def extractPacketProtocols(packet_json):
         Protocol_Already_Exists = False
         for i in range(2, 5):
             Protocol_Already_Exists = False
-            if len(packet_json["Frame_info"]["Frame_protocols"]) > i and packet_json["Frame_info"]["Frame_protocols"][i] != "Raw":
+            if len(packet_json["Frame_info"]["Frame_protocols"]) > i and packet_json["Frame_info"]["Frame_protocols"][
+                i] != "Raw":
                 for j in AnalyzedData:
                     if j["name"] == packet_json["Frame_info"]["Frame_protocols"][i]:
                         j["count"] += 1
@@ -237,7 +238,7 @@ class Sniffer:
         except:
             packet_json["Encapsulation_type"] = ""
         try:
-            packet_json["Arrival_time"] = packet.time
+            packet_json["Arrival_time"] = float(packet.time)
         except:
             packet_json["Arrival_time"] = ""
 
@@ -479,21 +480,33 @@ def get_devices():
         emit('devices', {'data': 'Done', 'status': 'success'})
 
 
-@socket_.on('saveFile')
-def saveFile():
-    try:
-        global Packets
-        print("Saving File")
-        wrpcap('test.pcap', Packets)
-        emit('savedFile', {'data': 'Done', 'status': 'success'})
-    except:
-        emit('savedFile', {'data': 'Error', 'status': 'error'})
+@socket_.on('get_imported_data')
+def get_imported_data():
+    emit('imported_data', {'data': 'Done', 'status': 'success', 'Devices': Devices,
+                           'InstantaneousSPEED': InstantaneousSPEED, 'AnalyzedData': AnalyzedData, 'AvgSpeed': SPEED,
+                           'TotalPackets': len(Packets)})
+
+
+@socket_.on('get_pagination_packets')
+def get_pagination_packets():
+    global PaginationPackets
+    print("Pagination Packets: ", PaginationPackets)
+    emit('pagination_packets', {'data': 'Done', 'status': 'success', 'PaginationPackets': PaginationPackets})
 
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    global Packets
+    global Packets, temp_packets, StartTime, SPEED, Devices, LOCK, Continue, FILTERS, AnalyzedData, InstantaneousSPEED
     Packets = []
+    temp_packets = []
+    StartTime = None
+    SPEED = []
+    Devices = []
+    LOCK = threading.Lock()
+    Continue = False
+    AnalyzedData = []
+    InstantaneousSPEED = []
+    end_time = 0
     try:
         file = request.files['file']
         if file:
@@ -502,8 +515,31 @@ def upload_file():
             file.save(os.path.join(os.getcwd(), filename))
             # read pcap file
             Packets = rdpcap(filename)
+            for i in range(0, len(Packets)):
+                packet_json = Sniffer().create_packet_json(Packets[i])
+                if packet_json["Frame_info"]["deviceType"] != "Broadcast":
+                    extractDeviceFromPacket(packet_json)
+                    getTheSpeedOfEachDevice(packet_json)
+                extractPacketProtocols(packet_json)
+                if not StartTime:
+                    StartTime = float(packet_json["Frame_info"]["Arrival_time"])
+                end_time = packet_json["Frame_info"]["Arrival_time"]
+            for i in range(len(SPEED)):
+                InstantaneousSPEED[i]["instantanouesRSpeed"] = 0
+                InstantaneousSPEED[i]["instantanouesSSpeed"] = 0
+                if time.time() - StartTime:
+                    if StartTime:
+                        SPEED[i]['avgRSpeed'] = float(SPEED[i]['RBytes'] / (end_time - StartTime))
+                        SPEED[i]['avgSSpeed'] = float(SPEED[i]['SBytes'] / (end_time - StartTime))
+                    else:
+                        SPEED[i]['avgRSpeed'] = 0
+                        SPEED[i]['avgSSpeed'] = 0
+                else:
+                    SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes']
+                    SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes']
             # remove file
             os.remove(filename)
+
             return {'data': 'Done', 'status': 'success'}
         return {'data': 'Error', 'status': 'error'}
     except Exception as e:
@@ -536,7 +572,7 @@ def download_file():
 
 @app.route('/getpackets', methods=['POST'])
 def get_packets():
-    global Packets, LOCK
+    global Packets, LOCK, PaginationPackets
     try:
         data = json.loads(request.get_data())
         page = data['page']
@@ -551,7 +587,8 @@ def get_packets():
             if applyFilters(packet_json):
                 temp_packets.append(packet_json)
         LOCK.release()
-        return {'data': temp_packets, 'status': 'success'}
+        PaginationPackets = temp_packets
+        return {'data': '', 'status': 'success'}
     except Exception as e:
         print(e)
         return {'data': str(e), 'status': 'error'}
