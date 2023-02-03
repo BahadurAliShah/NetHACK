@@ -490,7 +490,6 @@ def get_imported_data():
 @socket_.on('get_pagination_packets')
 def get_pagination_packets():
     global PaginationPackets
-    print("Pagination Packets: ", PaginationPackets)
     emit('pagination_packets', {'data': 'Done', 'status': 'success', 'PaginationPackets': PaginationPackets})
 
 
