@@ -347,9 +347,15 @@ class Sniffer:
         return (packet_json)
 
     def start(self, interface):
-        global StartTime, SPEED
+        global StartTime, SPEED, InstantaneousSPEED, Devices, AnalyzedData, Packets, temp_packets
         try:
             StartTime = time.time()
+            SPEED = []
+            InstantaneousSPEED = []
+            Devices = []
+            AnalyzedData = []
+            Packets = []
+            temp_packets = []
 
             def print_layers(packet):
                 global temp_packets, Packets, Continue, Devices, LOCK
