@@ -1,11 +1,10 @@
 import json
-import threading
 
+import Packages.suricata as suricata
 from app import socket_, app
 from flask import request, send_file
 from flask_socketio import emit
 from scapy.all import *
-import Packages.suricata as suricata
 
 temp_json_packets = []
 temp_packets = []
@@ -22,6 +21,7 @@ FILTERS = []
 AnalyzedData = []
 PaginationPackets = None
 PaginationWarnings = None
+SuricataWarnings = []
 
 
 def extractPacketProtocols(packet_json):
@@ -492,7 +492,7 @@ def get_devices():
 def get_imported_data():
     emit('imported_data', {'data': 'Done', 'status': 'success', 'Devices': Devices,
                            'InstantaneousSPEED': InstantaneousSPEED, 'AnalyzedData': AnalyzedData, 'AvgSpeed': SPEED,
-                           'TotalPackets': len(Packets)})
+                           'TotalPackets': len(Packets), "Warnings": SuricataWarnings})
 
 
 @socket_.on('get_pagination_packets')
@@ -509,7 +509,7 @@ def get_pagination_warnings():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    global Packets, temp_json_packets, StartTime, SPEED, Devices, LOCK, Continue, FILTERS, AnalyzedData, InstantaneousSPEED
+    global Packets, temp_json_packets, StartTime, SPEED, Devices, LOCK, Continue, FILTERS, AnalyzedData, InstantaneousSPEED, SuricataWarnings
     Packets = []
     temp_json_packets = []
     StartTime = None
@@ -550,6 +550,9 @@ def upload_file():
                 else:
                     SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes']
                     SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes']
+
+            SuricataWarnings = suricata.analyze(Packets)
+
             # remove file
             os.remove(filename)
 
@@ -596,7 +599,7 @@ def get_packets():
         iterator = 0
         if len(Packets) < (page) * size + upperLimit:
             upperLimit = len(Packets) - page * size
-        while len(temp_json_packets) < upperLimit and page * size+iterator < len(Packets):
+        while len(temp_json_packets) < upperLimit and page * size + iterator < len(Packets):
             packet_json = Sniffer().create_packet_json(Packets[page * size + iterator])
             iterator += 1
             if applyFilters(packet_json):
@@ -624,8 +627,7 @@ def get_warnings():
         if len(warnings) < (page) * size + upperLimit:
             upperLimit = len(Packets) - page * size
 
-
-        while len(temp_json_warnings) < upperLimit and page * size+iterator < len(warnings):
+        while len(temp_json_warnings) < upperLimit and page * size + iterator < len(warnings):
             temp_json_warnings.append(warnings[page * size + iterator])
             iterator += 1
         LOCK.release()
