@@ -5,7 +5,9 @@ from app import socket_, app
 from flask import request, send_file
 from flask_socketio import emit
 from scapy.all import *
+import Packages.suricata as suricata
 
+temp_json_packets = []
 temp_packets = []
 Packets = []
 Devices = []
@@ -19,6 +21,7 @@ DELAY = 1
 FILTERS = []
 AnalyzedData = []
 PaginationPackets = None
+PaginationWarnings = None
 
 
 def extractPacketProtocols(packet_json):
@@ -347,7 +350,7 @@ class Sniffer:
         return (packet_json)
 
     def start(self, interface):
-        global StartTime, SPEED, InstantaneousSPEED, Devices, AnalyzedData, Packets, temp_packets
+        global StartTime, SPEED, InstantaneousSPEED, Devices, AnalyzedData, Packets, temp_json_packets, temp_packets
         try:
             StartTime = time.time()
             SPEED = []
@@ -355,10 +358,11 @@ class Sniffer:
             Devices = []
             AnalyzedData = []
             Packets = []
+            temp_json_packets = []
             temp_packets = []
 
             def print_layers(packet):
-                global temp_packets, Packets, Continue, Devices, LOCK
+                global temp_json_packets, Packets, Continue, Devices, LOCK, temp_packets
                 # print(self.create_packet_json(packet))
 
                 packet_json = self.create_packet_json(packet)
@@ -368,10 +372,11 @@ class Sniffer:
                     getTheSpeedOfEachDevice(packet_json)
                 extractPacketProtocols(packet_json)
                 if applyFilters(packet_json):
-                    temp_packets.append(packet_json)
+                    temp_json_packets.append(packet_json)
+                    temp_packets.append(packet)
                 Packets.append(packet)
 
-                # print(len(temp_packets))
+                # print(len(temp_json_packets))
                 LOCK.release()
                 # print(Devices)
 
@@ -387,13 +392,13 @@ class Sniffer:
 
 
 def dataGenerator(interface):
-    global Continue, temp_packets, Packets, LOCK
+    global Continue, temp_json_packets, Packets, LOCK, temp_packets
     print("Initialising")
     threading.Thread(target=Sniffer().start, args=(interface,)).start()
 
     while Continue:
         try:
-            while len(temp_packets) == 0 and Continue:
+            while len(temp_json_packets) == 0 and Continue:
                 socket_.sleep(DELAY)
             LOCK.acquire()
             for i in range(len(SPEED)):
@@ -405,17 +410,21 @@ def dataGenerator(interface):
                 else:
                     SPEED[i]['avgRSpeed'] = SPEED[i]['RBytes']
                     SPEED[i]['avgSSpeed'] = SPEED[i]['SBytes']
+
+            Alerts = suricata.analyze(temp_packets)
+
             socket_.emit('packet', {
-                'data': json.dumps(temp_packets),
+                'data': json.dumps(temp_json_packets),
                 'InstantaneousSPEED': InstantaneousSPEED,
                 'AvgSpeed': SPEED,
                 'Devices': Devices,
                 'AnalyzedData': AnalyzedData,
-                'TotalPackets': len(Packets)
+                'TotalPackets': len(Packets),
+                'Alerts': Alerts
             })
-            print("Sent " + str(len(temp_packets)) + " packets")
+            print("Sent " + str(len(temp_json_packets)) + " packets")
             print("Total packets: " + str(len(Packets)) + "\n")
-            temp_packets = []
+            temp_json_packets = []
             for i in range(len(InstantaneousSPEED)):
                 InstantaneousSPEED[i]['RBytes'] = 0
                 InstantaneousSPEED[i]['SBytes'] = 0
@@ -492,11 +501,17 @@ def get_pagination_packets():
     emit('pagination_packets', {'data': 'Done', 'status': 'success', 'PaginationPackets': PaginationPackets})
 
 
+@socket_.on('get_pagination_warnings')
+def get_pagination_warnings():
+    global PaginationWarnings
+    emit('pagination_warnings', {'data': 'Done', 'status': 'success', 'PaginationWarnings': PaginationWarnings})
+
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    global Packets, temp_packets, StartTime, SPEED, Devices, LOCK, Continue, FILTERS, AnalyzedData, InstantaneousSPEED
+    global Packets, temp_json_packets, StartTime, SPEED, Devices, LOCK, Continue, FILTERS, AnalyzedData, InstantaneousSPEED
     Packets = []
-    temp_packets = []
+    temp_json_packets = []
     StartTime = None
     SPEED = []
     Devices = []
@@ -576,18 +591,45 @@ def get_packets():
         page = data['page']
         size = data['size']
         LOCK.acquire()
-        temp_packets = []
+        temp_json_packets = []
         upperLimit = (page + 1) * size
         iterator = 0
         if len(Packets) < (page) * size + upperLimit:
             upperLimit = len(Packets) - page * size
-        while len(temp_packets) < upperLimit and page * size+iterator < len(Packets):
+        while len(temp_json_packets) < upperLimit and page * size+iterator < len(Packets):
             packet_json = Sniffer().create_packet_json(Packets[page * size + iterator])
             iterator += 1
             if applyFilters(packet_json):
-                temp_packets.append(packet_json)
+                temp_json_packets.append(packet_json)
         LOCK.release()
-        PaginationPackets = temp_packets
+        PaginationPackets = temp_json_packets
+        return {'data': '', 'status': 'success'}
+    except Exception as e:
+        print(e)
+        return {'data': str(e), 'status': 'error'}
+
+
+@app.route('/getwarnings', methods=['POST'])
+def get_warnings():
+    global Packets, LOCK, PaginationWarnings
+    try:
+        data = json.loads(request.get_data())
+        page = data['page']
+        size = data['size']
+        LOCK.acquire()
+        temp_json_warnings = []
+        upperLimit = (page + 1) * size
+        warnings = suricata.analyze(Packets)
+        iterator = 0
+        if len(warnings) < (page) * size + upperLimit:
+            upperLimit = len(Packets) - page * size
+
+
+        while len(temp_json_warnings) < upperLimit and page * size+iterator < len(warnings):
+            temp_json_warnings.append(warnings[page * size + iterator])
+            iterator += 1
+        LOCK.release()
+        PaginationWarnings = temp_json_warnings
         return {'data': '', 'status': 'success'}
     except Exception as e:
         print(e)
